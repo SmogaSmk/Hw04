@@ -716,3 +716,90 @@ export_to_csv(all_entities)
 构建图的结果为: 
 
 ![关系图](./pic/graph.png)
+
+将数据上传，上传到Tugraph：
+```python
+from neo4j import GraphDatabase
+import csv
+import os
+
+
+class TuGraphBoltUploader:
+    def __init__(self, uri="bolt://localhost:7687", user="admin", password="73@TuGraph", database="default"):
+        self.driver = GraphDatabase.driver(uri, auth=(user, password))
+        self.database = database
+
+    def close(self):
+        self.driver.close()
+
+    def import_vertices(self, csv_dir):
+        """批量导入顶点"""
+        vertex_labels = ['Question', 'Answer', 'Keyword', 'LegalArticle']
+
+        for label in vertex_labels:
+            csv_file = f"{csv_dir}/{label}.csv"
+            if not os.path.exists(csv_file):
+                continue
+
+            with open(csv_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+
+                with self.driver.session(database=self.database) as session:
+                    for row in reader:
+                        # 构建属性字符串
+                        props = ", ".join([f"{k}: ${k}" for k in row.keys()])
+                        cypher = f"CREATE (n:{label} {{{props}}})"
+                        session.run(cypher, **row)
+
+            print(f"{label} 导入完成")
+
+    def import_edges(self, csv_dir):
+        """批量导入边"""
+        edge_configs = [
+            ('HAS_ANSWER', 'Question', 'id', 'Answer', 'answer_id'),
+            ('QUESTION_KEYWORD', 'Question', 'id', 'Keyword', 'keyword'),
+            ('ANSWER_KEYWORD', 'Answer', 'answer_id', 'Keyword', 'keyword'),
+            ('CITES_ARTICLE', 'Answer', 'answer_id', 'LegalArticle', 'article_id')
+        ]
+
+        for edge_label, src_label, src_key, dst_label, dst_key in edge_configs:
+            csv_file = f"{csv_dir}/{edge_label}.csv"
+            if not os.path.exists(csv_file):
+                continue
+
+            with open(csv_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+
+                cypher = f"""
+                MATCH (a:{src_label} {{{src_key}: $src}}),
+                      (b:{dst_label} {{{dst_key}: $dst}})
+                CREATE (a)-[:{edge_label}]->(b)
+                """
+
+                with self.driver.session(database=self.database) as session:
+                    for row in reader:
+                        session.run(cypher, src=row['src'], dst=row['dst'])
+
+            print(f"{edge_label} 导入完成")
+
+
+# 使用
+if __name__ == "__main__":
+    uploader = TuGraphBoltUploader(
+        uri="bolt://localhost:7687",
+        user="admin",
+        password="Szh168kk",
+        database="LawGraph"
+    )
+
+    try:
+        uploader.import_vertices("tugraph_csv")
+        uploader.import_edges("tugraph_csv")
+        print("全部导入完成")
+    finally:
+        uploader.close()
+```
+
+用Cypher语句观测关系是否导入成功
+
+![Cypher](./pic/Cypher.png)
