@@ -337,8 +337,10 @@ if __name__ == "__main__":
     )
 
   ```
+
     抽取实体之后，我们可以得到一个json数据，当然它不够完善，主要是因为没有词典，所以它结合了2个数据一起供大模型参考，其中pair-qa多为口语化的提问，而triplet-QA多为法律专业性数据，所以我们可以结合2者共同增强我们的数据
     这个json的一个样板如下：
+    
   ```{json}
   {
     "id": "legal_question_answering_0",
@@ -372,3 +374,206 @@ if __name__ == "__main__":
   }
   ```
 上图即为模板数据
+## 关系抽取与模板搭建
+在获取数据之后，我们要构建schema.json用于关系图的构建，同时还要上传数据到Tugraph中(这里neo4j的思路和方案类似，在帖子中不再展示，可以在项目文件中查看)
+```
+import re
+import json
+import os
+import csv
+
+
+def extract_entities(json_record, keyword_set, article_set):
+    entities = {
+        "vertices": {"Question": [], "Answer": [], "Keyword": [], "LegalArticle": []},
+        "edges": {"HAS_ANSWER": [], "QUESTION_KEYWORD": [], "ANSWER_KEYWORD": [], "CITES_ARTICLE": []}
+    }
+
+    # 1. Question节点
+    entities["vertices"]["Question"].append({
+        "id": json_record["id"],
+        "question_text": json_record["question"]
+    })
+
+    # 2. Answer节点
+    answer_id = f"{json_record['id']}_answer"
+    entities["vertices"]["Answer"].append({
+        "answer_id": answer_id,
+        "answer_text": json_record["answer"]
+    })
+
+    # 3. HAS_ANSWER关系
+    entities["edges"]["HAS_ANSWER"].append({
+        "src": json_record["id"],
+        "dst": answer_id
+    })
+
+    # 4. 提取问题关键词
+    for kw in json_record["extracted"]["question_keywords"]:
+        if kw not in keyword_set:
+            entities["vertices"]["Keyword"].append({"keyword": kw})
+            keyword_set.add(kw)
+        entities["edges"]["QUESTION_KEYWORD"].append({
+            "src": json_record["id"],
+            "dst": kw
+        })
+
+    # 5. 提取答案关键词
+    for kw in json_record["extracted"]["answer_entities"]["关键词"]:
+        if kw not in keyword_set:
+            entities["vertices"]["Keyword"].append({"keyword": kw})
+            keyword_set.add(kw)
+        entities["edges"]["ANSWER_KEYWORD"].append({
+            "src": answer_id,
+            "dst": kw
+        })
+
+    # 6. 提取法律条文
+    for article_full in json_record["extracted"]["related_articles"]:
+        law_name, article_number = parse_legal_article(article_full)
+        article_id = generate_article_id(law_name, article_number)
+
+        # 只在首次出现时添加到vertices
+        if article_id not in article_set:
+            entities["vertices"]["LegalArticle"].append({
+                "article_id": article_id,
+                "article_name": article_full,
+                "law_name": law_name,
+                "article_number": article_number
+            })
+            article_set.add(article_id)
+
+        # 边始终添加(多个Answer可以引用同一Article)
+        entities["edges"]["CITES_ARTICLE"].append({
+            "src": answer_id,
+            "dst": article_id
+        })
+
+    return entities
+
+
+def process_all_records(json_records):
+    """处理所有记录,确保LegalArticle全局去重"""
+
+    all_entities = {
+        "vertices": {
+            "Question": [],
+            "Answer": [],
+            "Keyword": [],
+            "LegalArticle": []
+        },
+        "edges": {
+            "HAS_ANSWER": [],
+            "QUESTION_KEYWORD": [],
+            "ANSWER_KEYWORD": [],
+            "CITES_ARTICLE": []
+        }
+    }
+
+    # 全局去重集合
+    global_keyword_set = set()
+    global_article_set = set()
+
+    for record in json_records:
+        entities = extract_entities(
+            record,
+            global_keyword_set,
+            global_article_set
+        )
+
+        # 合并结果
+        for v_type, v_list in entities["vertices"].items():
+            all_entities["vertices"][v_type].extend(v_list)
+        for e_type, e_list in entities["edges"].items():
+            all_entities["edges"][e_type].extend(e_list)
+
+    return all_entities
+
+
+def generate_article_id(law_name, article_number):
+    """生成唯一的article_id"""
+    # 例如：刑法_第四百二十五条 -> xingfa_425
+    import hashlib
+    raw = f"{law_name}_{article_number}"
+    return hashlib.md5(raw.encode()).hexdigest()[:16]
+
+
+def parse_legal_article(full_article):
+    """
+    解析：《行政诉讼法》第十二条
+    返回：("行政诉讼法", "第十二条")
+    """
+    pattern = r'《(.+?)》(.+)'
+    match = re.match(pattern, full_article)
+
+    if match:
+        law_name = match.group(1)
+        article_number = match.group(2)
+        return law_name, article_number
+
+    pattern2 = r'(.+?法)(.+)'
+    match = re.match(pattern2, full_article)
+
+    if match:
+        return match.group(1), match.group(2)
+
+    return "未知法律", full_article
+
+
+def export_to_csv(all_entities, output_dir="tugraph_csv"):
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 导出顶点
+    # Question
+    with open(f"{output_dir}/Question.csv", 'w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['id', 'question_text'])
+        for v in all_entities["vertices"]["Question"]:
+            writer.writerow([v['id'], v['question_text']])
+
+    # Answer
+    with open(f"{output_dir}/Answer.csv", 'w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['answer_id', 'answer_text'])
+        for v in all_entities["vertices"]["Answer"]:
+            writer.writerow([v['answer_id'], v['answer_text']])
+
+    # Keyword
+    with open(f"{output_dir}/Keyword.csv", 'w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['keyword'])
+        for v in all_entities["vertices"]["Keyword"]:
+            writer.writerow([v['keyword']])
+
+    # LegalArticle
+    with open(f"{output_dir}/LegalArticle.csv", 'w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['article_id', 'article_name',
+                        'law_name', 'article_number'])
+        for v in all_entities["vertices"]["LegalArticle"]:
+            writer.writerow([v['article_id'], v['article_name'],
+                            v['law_name'], v['article_number']])
+
+    # 导出边
+    for edge_type in ['HAS_ANSWER', 'QUESTION_KEYWORD', 'ANSWER_KEYWORD', 'CITES_ARTICLE']:
+        with open(f"{output_dir}/{edge_type}.csv", 'w', encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['src', 'dst'])
+            for e in all_entities["edges"][edge_type]:
+                writer.writerow([e['src'], e['dst']])
+
+
+with open('./lawQA_filter.json', 'r', encoding='utf-8') as f:
+    records = json.load(f)
+
+if isinstance(records, dict):
+    records = [records]
+
+all_entities = process_all_records(records)
+
+export_to_csv(all_entities)
+```
+
+上述代码为将实体抽取，获得节点和关系边 
+
+下面的json文件为schema.json，是图的基本构建描述
