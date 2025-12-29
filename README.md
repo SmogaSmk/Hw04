@@ -10,7 +10,7 @@
   这个数据的设计本意是用来进行监督微调，强化反馈的，这里我们拿他来抽取实体，采用本地部署的方式  
   
   由于开源公开的法律词典难以获得，使用jieba等库，没有经过专业的法律词汇的训练，因此结合大模型与jieba共同抽取实体：
-  ``` {python}
+  ```python
 import re
 import json
 import pandas as pd
@@ -376,7 +376,7 @@ if __name__ == "__main__":
 上图即为模板数据
 ## 关系抽取与模板搭建
 在获取数据之后，我们要构建schema.json用于关系图的构建，同时还要上传数据到Tugraph中(这里neo4j的思路和方案类似，在帖子中不再展示，可以在项目文件中查看)
-```
+``` python
 import re
 import json
 import os
@@ -577,3 +577,142 @@ export_to_csv(all_entities)
 上述代码为将实体抽取，获得节点和关系边 
 
 下面的json文件为schema.json，是图的基本构建描述
+
+```json
+{
+  "schema": [
+    {
+      "label": "Question",
+      "type": "VERTEX",
+      "primary": "id",
+      "properties": [
+        {
+          "name": "id",
+          "type": "STRING"
+        },
+        {
+          "name": "question_text",
+          "type": "STRING"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_question_text",
+          "fields": [
+            "question_text"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "Answer",
+      "type": "VERTEX",
+      "primary": "answer_id",
+      "properties": [
+        {
+          "name": "answer_id",
+          "type": "STRING"
+        },
+        {
+          "name": "answer_text",
+          "type": "STRING"
+        }
+      ]
+    },
+    {
+      "label": "Keyword",
+      "type": "VERTEX",
+      "primary": "keyword",
+      "properties": [
+        {
+          "name": "keyword",
+          "type": "STRING"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_keyword",
+          "fields": [
+            "keyword"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "LegalArticle",
+      "type": "VERTEX",
+      "primary": "article_id",
+      "properties": [
+        {
+          "name": "article_id",
+          "type": "STRING"
+        },
+        {
+          "name": "article_name",
+          "type": "STRING"
+        },
+        {
+          "name": "law_name",
+          "type": "STRING"
+        },
+        {
+          "name": "article_number",
+          "type": "STRING"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_law_name",
+          "fields": [
+            "law_name"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "HAS_ANSWER",
+      "type": "EDGE",
+      "constraints": [
+        [
+          "Question",
+          "Answer"
+        ]
+      ]
+    },
+    {
+      "label": "QUESTION_KEYWORD",
+      "type": "EDGE",
+      "constraints": [
+        [
+          "Question",
+          "Keyword"
+        ]
+      ]
+    },
+    {
+      "label": "ANSWER_KEYWORD",
+      "type": "EDGE",
+      "constraints": [
+        [
+          "Answer",
+          "Keyword"
+        ]
+      ]
+    },
+    {
+      "label": "CITES_ARTICLE",
+      "type": "EDGE",
+      "constraints": [
+        [
+          "Answer",
+          "LegalArticle"
+        ]
+      ]
+    }
+  ]
+}
+```
+
+构建图的结果为: 
+
+![./pic/graph.png]
