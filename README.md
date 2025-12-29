@@ -715,4 +715,4 @@ export_to_csv(all_entities)
 
 构建图的结果为: 
 
-![./pic/graph.png]
+![pic/graph.png]
