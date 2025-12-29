@@ -3,8 +3,8 @@
   知识图谱与大模型在各大行业广泛运用，本次使用法律问答对数据，以及结合大模型技术来搭建一个智能问答系统
 
 ## 数据与模型介绍 
-  采用的数据为:https://huggingface.co/datasets/ShengbinYue/DISC-Law-SFT
-  采用的模型为:https://huggingface.co/ShengbinYue/LawLLM-7B
+  采用的数据为:https://huggingface.co/datasets/ShengbinYue/DISC-Law-SFT  \\ 
+  采用的模型为:https://huggingface.co/ShengbinYue/LawLLM-7B  \\
   这个数据的设计本意是用来进行监督微调，强化反馈的，这里我们拿他来抽取实体，采用本地部署的方式
   由于开源公开的法律词典难以获得，使用jieba等库，没有经过专业的法律词汇的训练，因此结合大模型与jieba共同抽取实体：
   ``` {python}
