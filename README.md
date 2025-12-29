@@ -1158,10 +1158,10 @@ if __name__ == "__main__":
 
 运行上述命令，即可观测到回答: 
 
-![answer1](./pic/Answer1)
-![answer2](./pic/Answer2)
-![answer3](./pic/Answer3)
-![answer4](./pic/Answer4)
+![answer1](./pic/Answer1.png)
+![answer2](./pic/Answer2.png)
+![answer3](./pic/Answer3.png)
+![answer4](./pic/Answer4.png)
 
 # Neo4j演示 (思路与流程基本与Tugraph一致，这里只演示结果)
 
