@@ -725,7 +725,7 @@ import os
 
 
 class TuGraphBoltUploader:
-    def __init__(self, uri="bolt://localhost:7687", user="admin", password="73@TuGraph", database="default"):
+    def __init__(self, uri="bolt://localhost:7687", user="admin", password="XXXXX", database="XXXXX"):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self.database = database
 
@@ -788,8 +788,8 @@ if __name__ == "__main__":
     uploader = TuGraphBoltUploader(
         uri="bolt://localhost:7687",
         user="admin",
-        password="Szh168kk",
-        database="LawGraph"
+        password="XXXXX",
+        database="XXXXX"
     )
 
     try:
@@ -818,7 +818,7 @@ from openai import OpenAI
 
 
 class LawGraphQueryParser:
-    def __init__(self, uri="bolt://localhost:7687", user="admin", password="Szh168kk", database="LawGraph", qwen_api_key=None):
+    def __init__(self, uri="bolt://localhost:7687", user="admin", password="XXXX", database="XXX", qwen_api_key=None):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self.database = database
         api_key = qwen_api_key or os.getenv("DASHSCOPE_API_KEY")
@@ -1107,7 +1107,7 @@ class LawGraphQueryParser:
 # 使用示例
 if __name__ == "__main__":
     parser = LawGraphQueryParser(
-        qwen_api_key="sk-08e8de23e356439c804ea54a20c6e5f6")
+        qwen_api_key="XXXXX")
 
     try:
         query = "合同纠纷怎么处理"
@@ -1158,4 +1158,10 @@ if __name__ == "__main__":
 
 运行上述命令，即可观测到回答: 
 
+![answer1](./pic/Answer1)
+![answer2](./pic/Answer2)
+![answer3](./pic/Answer3)
+![answer4](./pic/Answer4)
+
+# Neo4j演示 (思路与流程基本与Tugraph一致，这里只演示结果)
 
