@@ -1164,4 +1164,152 @@ if __name__ == "__main__":
 ![answer4](./pic/Answer4.png)
 
 # Neo4j演示 (思路与流程基本与Tugraph一致，这里只演示结果)
+与Tugraph不同的是，这次我们不需要强制上传json了，但是有一个类似于json的东西可以帮助我们添加依赖也是非常好的
+### 搭建点和边的关系
+```python
+from neo4j import GraphDatabase
+import json
 
+def sync_schema(json_path, uri, user, password):
+    with open(json_path, 'r', encoding='utf-8') as f:
+        config = json.load(f)
+
+    driver = GraphDatabase.driver(uri, auth=(user, password))
+    
+    with driver.session() as session:
+        for item in config['schema']:
+            label = item['label']
+            
+            if item['type'] == 'VERTEX':
+                primary_key = item.get('primary')
+                if primary_key:
+                    constraint_query = f"CREATE CONSTRAINT IF NOT EXISTS FOR (n:{label}) REQUIRE n.{primary_key} IS UNIQUE"
+                    session.run(constraint_query)
+                    print(f"Success: {label}({primary_key})")
+                
+                for idx in item.get('indexes', []):
+                    fields = ", ".join([f"n.{f}" for f in idx['fields']])
+                    idx_name = idx['name']
+                    index_query = f"CREATE INDEX {idx_name} IF NOT EXISTS FOR (n:{label}) ON ({fields})"
+                    session.run(index_query)
+                    print(f"Success: {idx_name} on {label}")
+
+    driver.close()
+
+sync_schema('schema.json', "bolt://localhost:7689", "neo4j", "password")
+```
+然后下一步就要上传提交数据到数据库中
+```python
+from neo4j import GraphDatabase
+import csv
+import os
+
+class Neo4jSimpleUploader:
+    def __init__(self, uri="bolt://localhost:7687", user="neo4j", password="your_password", database="neo4j"):
+        self.driver = GraphDatabase.driver(uri, auth=(user, password))
+        self.database = database
+
+    def close(self):
+        self.driver.close()
+
+    def import_vertices(self, csv_dir):
+        vertex_configs = [
+            ("Question", "id", ["id", "question_text"]),
+            ("Answer", "answer_id", ["answer_id", "answer_text"]),
+            ("Keyword", "keyword", ["keyword"]),
+            ("LegalArticle", "article_id", ["article_id", "article_name", "law_name", "article_number"])
+        ]
+
+        for label, primary_key, expected_fields in vertex_configs:
+            csv_file = os.path.join(csv_dir, f"{label}.csv")
+            if not os.path.exists(csv_file):
+                print(f" {csv_file} not exist, skip ")
+                continue
+
+            with open(csv_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+                if not rows:
+                    print(f"{label}.csv is empty skip")
+                    continue
+
+                actual_fields = rows[0].keys()
+                if not all(field in actual_fields for field in expected_fields):
+                    print(f"{label}.csv not complete，expected {expected_fields}，truth {list(actual_fields)}")
+                    continue
+
+                with self.driver.session(database=self.database) as session:
+                    for row in rows:
+                        cypher = f"""
+                        MERGE (n:{label} {{{primary_key}: $primary_value}})
+                        SET n += $props
+                        """
+                        props = {k: v for k, v in row.items() if k != primary_key}  
+                        session.run(cypher, primary_value=row[primary_key], props=props)
+
+    def import_edges(self, csv_dir):
+        edge_configs = [
+            ("HAS_ANSWER", "Question", "id", "Answer", "answer_id"),
+            ("QUESTION_KEYWORD", "Question", "id", "Keyword", "keyword"),
+            ("ANSWER_KEYWORD", "Answer", "answer_id", "Keyword", "keyword"),
+            ("CITES_ARTICLE", "Answer", "answer_id", "LegalArticle", "article_id")
+        ]
+
+        for edge_label, src_label, src_key, dst_label, dst_key in edge_configs:
+            csv_file = os.path.join(csv_dir, f"{edge_label}.csv")
+            if not os.path.exists(csv_file):
+                print(f"{csv_file} not exist, skip")
+                continue
+
+            with open(csv_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+                if not rows:
+                    print(f"{edge_label}.csv empty skip")
+                    continue
+
+                if list(rows[0].keys()) != ['src', 'dst']:
+                    print(f"{edge_label}.csv format error , should include src and dst columns")
+                    continue
+
+                cypher = f"""
+                MATCH (a:{src_label} {{{src_key}: $src_id}})
+                MATCH (b:{dst_label} {{{dst_key}: $dst_id}})
+                MERGE (a)-[r:{edge_label}]->(b)
+                """
+
+                with self.driver.session(database=self.database) as session:
+                    for row in rows:
+                        session.run(cypher, src_id=row['src'], dst_id=row['dst'])
+
+            print(f" {edge_label} successfully import（{len(rows)} ）")
+
+
+if __name__ == "__main__":
+    uploader = Neo4jSimpleUploader(
+        uri="bolt://localhost:7689",
+        user="neo4j",
+        password="password", 
+        database="neo4j"   
+    )
+
+    csv_directory = "tugraph_csv" 
+
+    try:
+        uploader.import_vertices(csv_directory)
+        uploader.import_edges(csv_directory)
+    except Exception as e:
+        print(f"Import Error: {e}")
+    finally:
+        uploader.close()
+```
+为了测试数据是否上传成功，关系是否有效，在Neo4j页面用CYPHER语句进行查询
+```CYPHER
+MATCH (n)-[r*1..4]-(m) 
+RETURN n, r, m
+LIMIT 40
+```
+可以观察到实体-关系图：
+![NEO4J_CYPHER](./pic/graph_sample.png)
