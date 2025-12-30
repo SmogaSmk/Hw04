@@ -287,7 +287,7 @@ class LawGraphQueryParser:
 
 # 使用示例
 if __name__ == "__main__":
-    parser = LawGraphQueryParser(qwen_api_key="sk-08e8de23e356439c804ea54a20c6e5f6")
+    parser = LawGraphQueryParser(qwen_api_key="XXXXX")
     
     try:
         query = "合同纠纷怎么处理"
