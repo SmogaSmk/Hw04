@@ -1651,3 +1651,4 @@ if __name__ == "__main__":
         parser.close()
 ```
 之后可以观察到图片
+![Neo4jChat](./pic/Neo4jchat.png)
